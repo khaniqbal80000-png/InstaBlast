@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InstaBlast - Cloud Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col items-center py-10 font-sans">
+
+    <div class="w-full max-w-4xl bg-white rounded-xl shadow-lg p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+        
+        <!-- Left Side -->
+        <div>
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">Smart Campaign</h2>
+            
+            <div class="bg-purple-50 p-4 rounded-lg mb-6 border border-purple-200">
+                <h3 class="text-sm font-bold text-purple-800 mb-2">📸 Instagram Login Details</h3>
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="text" id="igUsername" placeholder="IG Username" class="w-full border-gray-300 rounded shadow-sm p-2 text-sm border focus:ring-purple-500 focus:border-purple-500">
+                    <input type="password" id="igPassword" placeholder="IG Password" class="w-full border-gray-300 rounded shadow-sm p-2 text-sm border focus:ring-purple-500 focus:border-purple-500">
+                </div>
+            </div>
+            
+            <label class="block text-sm font-medium text-gray-700 mb-2">Message Content</label>
+            <textarea id="messageInput" rows="3" class="w-full border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500 mb-4 p-2 border" placeholder="Apna message yahan likhein..."></textarea>
+            
+            <div class="flex justify-between items-end mb-2">
+                <label class="block text-sm font-medium text-gray-700">Target Usernames</label>
+                
+                <!-- NAYA: Number input box aur button -->
+                <div class="flex items-center space-x-2">
+                    <input type="number" id="followerCount" placeholder="Kitne?" value="50" class="w-20 border-gray-300 rounded shadow-sm p-1 text-xs border focus:ring-blue-500 text-center">
+                    <button id="fetchBtn" class="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1 px-3 rounded shadow transition">
+                        🔄 Get Followers
+                    </button>
+                </div>
+            </div>
+            
+            <textarea id="usernamesInput" rows="4" class="w-full border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500 mb-6 p-2 border" placeholder="List yahan aayegi..."></textarea>
+            
+            <button id="startBtn" class="w-full bg-gradient-to-r from-purple-600 to-pink-500 text-white font-bold py-3 px-4 rounded-lg shadow hover:opacity-90 transition">
+                Start Sending Messages
+            </button>
+        </div>
+
+        <!-- Right Side -->
+        <div class="bg-gray-900 rounded-xl p-6 flex flex-col h-[500px]">
+            <h3 class="text-white font-semibold mb-4 flex items-center">
+                <span class="w-3 h-3 rounded-full bg-green-400 mr-2"></span> Live Status Log
+            </h3>
+            <div id="terminal" class="flex-1 overflow-y-auto text-green-400 font-mono text-sm space-y-2 p-2 bg-black rounded border border-gray-700">
+                <div>>> System Ready... Apna Username aur Password daalein.</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const terminal = document.getElementById('terminal');
+        const usernamesInput = document.getElementById('usernamesInput');
+
+        function getCredentials() {
+            const ig_user = document.getElementById('igUsername').value;
+            const ig_pass = document.getElementById('igPassword').value;
+            if(!ig_user || !ig_pass) {
+                alert("Pehle apna Instagram Username aur Password dalein!");
+                return null;
+            }
+            return { ig_username: ig_user, ig_password: ig_pass };
+        }
+
+        // Followers laane wala function me ab 'amount' bhi ja raha hai
+        document.getElementById('fetchBtn').addEventListener('click', async () => {
+            const creds = getCredentials();
+            if(!creds) return;
+            
+            const amount = document.getElementById('followerCount').value || 50;
+
+            terminal.innerHTML += `<div>>> ${amount} followers nikal rahe hain... (Wait karein)</div>`;
+            terminal.scrollTop = terminal.scrollHeight;
+            document.getElementById('fetchBtn').innerText = "Loading...";
+
+            try {
+                const response = await fetch('/get_followers', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ...creds, amount: amount })
+                });
+                const data = await response.json();
+                
+                if(data.status === 'success') {
+                    usernamesInput.value = data.followers.join('\n');
+                    terminal.innerHTML += `<div>>> ✅ Total ${data.followers.length} followers load ho gaye!</div>`;
+                } else {
+                    terminal.innerHTML += `<div class="text-red-500">>> Error: ${data.message}</div>`;
+                }
+            } catch (error) {
+                terminal.innerHTML += `<div class="text-red-500">>> Server Error.</div>`;
+            }
+            document.getElementById('fetchBtn').innerText = "🔄 Get Followers";
+            terminal.scrollTop = terminal.scrollHeight;
+        });
+
+        document.getElementById('startBtn').addEventListener('click', async () => {
+            const creds = getCredentials();
+            if(!creds) return;
+
+            const msg = document.getElementById('messageInput').value;
+            const usersRaw = usernamesInput.value;
+            const usernames = usersRaw.split('\n').map(u => u.trim()).filter(u => u !== '');
+            
+            if (!msg || usernames.length === 0) {
+                alert("Message aur kam se kam 1 username zaroori hai!");
+                return;
+            }
+
+            terminal.innerHTML += `<div>>> Bhej rahe hain... Total users: ${usernames.length}</div>`;
+            terminal.scrollTop = terminal.scrollHeight;
+
+            const payload = { ...creds, message: msg, usernames: usernames };
+
+            try {
+                const response = await fetch('/send_messages', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await response.json();
+                
+                if(data.logs) {
+                    data.logs.forEach(log => {
+                        terminal.innerHTML += `<div>>> ${log}</div>`;
+                        terminal.scrollTop = terminal.scrollHeight;
+                    });
+                } else {
+                    terminal.innerHTML += `<div>>> Error: ${data.log}</div>`;
+                }
+            } catch (error) {
+                terminal.innerHTML += `<div class="text-red-500">>> Connection Error!</div>`;
+            }
+            terminal.scrollTop = terminal.scrollHeight;
+        });
+    </script>
+</body>
+</html>
